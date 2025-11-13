@@ -1,0 +1,290 @@
+body {
+	margin: 0 !important;
+	font-family: "system-ui";
+}
+
+html,
+body,
+#app {
+	height: 100vh;
+	margin: 0;
+	padding: 0;
+}
+
+/* Genel container ve arka plan */
+.chat-container {
+	position: relative;
+	min-height: 100vh;
+	overflow: hidden;
+	display: flex;
+	align-items: flex-end;
+	justify-content: flex-end;
+}
+
+.chat-widget-container {
+	width: 360px;
+	min-height: 60vh;
+	background: rgba(255, 255, 255, 0.9);
+	backdrop-filter: blur(15px);
+	border-radius: 20px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	animation: fadeIn 0.3s ease;
+}
+
+/* Arka plan efekti */
+.background {
+	position: absolute;
+	inset: 0;
+	background: #000000;
+	background-size: cover;
+	z-index: 0;
+}
+
+/* Chat widget */
+.chat-widget {
+	position: relative;
+	z-index: 1;
+	margin: 20px;
+}
+
+/* Chat kutusu */
+.chat-box {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	/* iframe’in tamamını kapla */
+	width: 100%;
+	background: white;
+}
+
+/* Üst başlık */
+.chat-header {
+	background: #fa4238;
+	color: white;
+	padding: 12px 16px;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	position: sticky;
+	top: 0;
+}
+
+.chat-header img {
+	height: 3rem;
+}
+
+.close-btn {
+	background: none;
+	border: none;
+	color: white;
+	font-size: 22px;
+	cursor: pointer;
+}
+
+/* Mesaj alanı */
+.messages {
+	flex: 1;
+	padding: 12px;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	scrollbar-width: none;
+	/* Firefox */
+	-ms-overflow-style: none;
+	/* IE ve eski Edge */
+}
+
+.messages::-webkit-scrollbar {
+	display: none;
+}
+
+.message {
+	display: flex;
+	margin-bottom: .5rem;
+}
+
+.message.user {
+	justify-content: flex-end;
+}
+
+.message.assistant {
+	justify-content: flex-start;
+}
+
+.bubble {
+	max-width: 75%;
+	padding: 10px 14px;
+	border-radius: 16px;
+	line-height: 1.4;
+	font-size: 14px;
+	word-wrap: break-word;
+}
+
+.user .bubble {
+	background: #fa4238;
+	color: white;
+	border-bottom-right-radius: 4px;
+	box-shadow: 0 0 1px 1px #fa4238;
+}
+
+.assistant .bubble {
+	color: #111;
+	border-bottom-left-radius: 4px;
+	box-shadow: 0 0 3px 1px #ddd7d7;
+}
+
+/* Mesaj input */
+.input-area {
+	display: flex;
+	padding: 10px;
+	border-top: 1px solid #ddd;
+	background: #fff;
+}
+
+input {
+	flex: 1;
+	padding: 8px 10px;
+	border: 1px solid #ccc;
+	border-radius: 8px;
+	outline: none;
+	font-size: 14px;
+}
+
+button {
+	margin-left: 8px;
+	color: white;
+	border: none;
+	border-radius: 8px;
+	padding: 8px 14px;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+.send {
+	padding: 0 16px;
+	height: 40px;
+	border-radius: 12px;
+	background: #fa4238;
+	color: white;
+	font-weight: 700;
+	cursor: pointer;
+	transition: background 0.3s;
+	box-shadow: 0 0 2px 0px white
+}
+
+/* Açma butonu */
+.chat-toggle {
+	background: #000000;
+	color: white;
+	border: none;
+	border-radius: 15px;
+	padding: 20px 30px;
+	cursor: pointer;
+	font-size: 18px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+	transition: transform 0.2s;
+	box-shadow: 0 0 4px 2px #393939;
+}
+
+.chat-toggle:hover {
+	transform: scale(1.05);
+}
+
+/* Animasyon */
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+		transform: translateY(20px);
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.composer {
+	padding: 14px 22px 18px;
+	position: sticky;
+	bottom: 0;
+	z-index: 3;
+}
+
+
+.composer-inner {
+	margin: 10px;
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 10px;
+	background: #ffffff;
+	border-radius: 16px;
+	padding: 10px;
+	color: black;
+	box-shadow: 1px 2px 10px 1px #c5c5c5;
+	position: sticky;
+	bottom: 0;
+	width: -webkit-fill-available;
+}
+
+.composer-inner input {
+	width: 100%;
+	background: transparent;
+	color: black;
+	border: none;
+	outline: none;
+	resize: vertical;
+	max-height: 220px;
+	font: inherit;
+	padding: 8px 10px;
+	font-size: 14px;
+}
+
+
+/* 3 nokta animasyonu */
+.typing-dots {
+	display: flex;
+	gap: 8px;
+}
+
+.typing-dots span {
+	width: 10px;
+	height: 10px;
+	background-color: #e0e6ff;
+	border-radius: 50%;
+	animation: blink 1.4s infinite;
+}
+
+.typing-dots span:nth-child(2) {
+	animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+	animation-delay: 0.4s;
+}
+
+@keyframes blink {
+
+	0%,
+	80%,
+	100% {
+		transform: scale(0.8);
+		opacity: 0.1;
+	}
+
+	40% {
+		transform: scale(1);
+		opacity: 0.5;
+	}
+}
+
+@media (max-width:1160px) {
+	.chat-box {
+		width: 100%;
+	}
+
+	.chat-widget {}
+}
