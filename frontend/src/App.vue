@@ -59,15 +59,17 @@ const sendMessage = async () => {
 };
 
 const formatBotMessage = (botMessage) => {
+
+	const escapeHtml = (str) => 
+        str.replace(/&/g, "&amp;")
+           .replace(/</g, "&lt;")
+           .replace(/>/g, "&gt;");
 	
-	const urlRegex = /(https?:\/\/[^\s]+)/g;
+	const urlRegex = /(https?:\/\/[^\s)<]+)/g;
 
-	let formattedMessage = botMessage.replace(
-		urlRegex, 
-		'<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-	)
-
-	formattedMessage = formattedMessage.replace(/\n/g, "<br>");
+ 	let formattedMessage = escapeHtml(botMessage)
+        .replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+        .replace(/\n/g, "<br>");
 
 	return { role: "assistant", content: '<span>'+ formattedMessage +'</span>' };
 }
