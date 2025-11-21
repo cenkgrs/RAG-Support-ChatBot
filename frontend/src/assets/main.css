@@ -288,3 +288,13 @@ button {
 
 	.chat-widget {}
 }
+
+p {
+	margin: 0;
+}
+
+.message a {
+	color: black;
+	font-weight: 500;
+	text-decoration: none;
+}

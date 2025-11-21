@@ -2,8 +2,10 @@
 
 import './assets/main.css'
 
-import { ref, onMounted } from "vue";
+import { ref, onMounted, defineProps } from "vue";
 import axios from "axios";
+import { marked } from "marked";
+const props = defineProps({ text: String });
 
 const bgColor = ref("#fa4238");
 const header = ref("Evia Home");
@@ -14,6 +16,8 @@ const messages = ref([]);
 
 const isTyping = ref(false);
 
+const userKey = crypto.randomUUID();
+
 onMounted(() => {
 	// URL'i tam al
 	const fullUrl = window.location.href;
@@ -23,7 +27,14 @@ onMounted(() => {
 	bgColor.value = params.get("bg") || "#fa4238";
 	header.value = params.get("header") || "Evia Home";
 	logo.value = "/argedestek-transparent.png";
+
 });
+
+marked.setOptions({ gfm: false })
+
+const generateUserKey = () => {
+	return crypto.randomUUID();
+}
 
 const sendMessage = async () => {
 	if (!userInput.value.trim()) return;
@@ -39,6 +50,7 @@ const sendMessage = async () => {
 
 	try {
 		const res = await axios.post("http://localhost:8000/chat", {
+			userKey: userKey,
 			messages: [...messages.value],
 		});
 
@@ -108,7 +120,7 @@ const closeWidget = () => {
 			<div v-for="(msg, index) in messages" :key="index" :class="['message', msg.role]">
 				<div class="bubble"
 					:style="msg.role == 'user' ? { backgroundColor: bgColor, boxShadow: '0 0 1px 1px ' + bgColor } : ''"
-					v-html="msg.content">
+					v-html="marked(msg.content)">
 				</div>
 			</div>
 

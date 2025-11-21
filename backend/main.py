@@ -8,6 +8,9 @@ from typing import List
 import pickle
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
+import json
+from utils.refundRequest import *
+from utils.addToCartRequest import *
 
 
 # ENV yükle
@@ -17,6 +20,8 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
 
 app = FastAPI()
+
+session_store = {}
 
 # CORS ayarı
 app.add_middleware(
@@ -32,39 +37,160 @@ class Message(BaseModel):
     content: str
 
 class ChatRequest(BaseModel):
+    userKey: str
     messages: List[Message]
 
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
-    '''
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",  # veya gpt-4o / gpt-5
-        messages=[
-            {"role": "system", "content": "Sen bir e-ticaret asistanısın"},
-			*req.messages
+
+    userKey = req.userKey
+    session = session_store.get(userKey, {})
+
+    session_store[userKey] = session
+
+    search_query = prep_query(req.messages)
+
+    print(search_query)
+
+    context = retrieve(search_query, top_k=3) 
+
+    # System Prompt
+    system_prompt = (
+        "Sen bir e-ticaret destek asistanısın. "
+        "Adın Arge-Destek. Asla bir yapay zeka veya ChatGPT olduğunu söyleme. "
+        "Görevin gelen soruları geçmiş konuşmaları dikkate alarak yanıtlamak"
+        "Cevaplarını HTML yerine Markdown formatında ver. "
+        "Asla <span>, <div>, <p> gibi HTML etiketleri üretme. "
+        "Liste, başlık, kalın yazı, satır başı gibi tüm biçimlendirmeleri Markdown ile yap. "
+    )
+
+    # Context Prompt
+    context_block = (
+        "Aşağıdaki bilgiler yalnızca yardımcı kaynaktır. "
+        "Cevap verirken kullanıcıya bunlardan bahsetme:\n\n"
+        f"{chr(10).join(context)}"
+    )
+
+    # Messages Data
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": context_block},
+        *[{"role": m.role, "content": m.content} for m in req.messages]
+    ]
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=messages,
+        temperature=0,
+        tools = [
+            {
+                "name": "initiate_return",
+                "description": "Kullanıcının ürün iade talebini başlatır, sipariş numarası, müşteri e-postası ve iade sebebini sorar ve onay aldıktan sonra API çağrısını yapar.",
+                "type": "function",
+                "function": {
+                    "name": "initiate_return",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "order_number": {"type": "string", "description": "İade edilecek sipariş numarası"},
+                            "return_reason": {"type": "string", "description": "İade sebebi"},
+                            "customer_email": {"type": "string", "description": "Üye E-Posta Adresi"}
+                        },
+                        "required": ["order_number", "customer_email"]
+                    }
+                }
+            },
+            {
+                "name": "add_to_cart",
+                "description": "Kullanıcının sepete ürün ekleme talebini yerine getirir. Ürün adı, adet bilgisi tespit edilir.",
+                "type": "function",
+                "function": {
+                    "name": "add_to_cart",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "product_id": {"type": "string"},
+                            "product_name": {"type": "string"},
+                            "quantity": {"type": "integer"}
+                        },
+                        "required": ["product_id", "quantity"]
+                    }
+                }
+            }
         ]
     )
 
-    reply = completion.choices[0].message.content
+    msg = response.choices[0].message
 
-    return {"reply": reply}
-    '''
+    print(msg)
 
-    last_message = req.messages[-1]
+    tool_calls = getattr(msg, "tool_calls", [])
+
+    if tool_calls:
+        for tool_call in tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments)
+
+            if tool_name == "initiate_return":
+
+                returnData = {
+                    "orderNumber": tool_args.get("order_number"),
+                    "returnReason": tool_args.get("return_reason"),
+                    "customerEmail": tool_args.get("customer_email")
+                }
+                
+                # API çağrısı
+                result = returnOrderApi(returnData)
+
+                if not result['status']:
+                    reply_text = result['message']
+
+                    return {"reply": reply_text}
+
+                session.clear()
+                reply_text = f"{returnData['orderNumber']} numaralı siparişinizin iade talebiniz onaylandı. Size en yakın MNG şubesine, {result['code']} iade kodu ile kolinizi teslim edebilirsiniz. Not: İade etmek istediğiniz ürünlerinizi eksiksiz ve kendi kolisinde kargoya teslim etmeniz gerekmektedir."
+
+            elif tool_name == "add_to_cart":
+
+                data = {
+                    "userKey": userKey,
+                    "productId": tool_args.get("product_id"),
+                    "quantity": tool_args.get("quantity")
+                }
+
+                result = addToCart(data)
+
+                reply_text = "Ürün sepete eklendi !"
+
+    else:
+        reply_text = msg.content
+
+        reply_text = re.sub(r'<[^>]+>', '', msg.content)
 
 
-    context = retrieve(last_message.content, top_k=3)
-    print(context)
-    prompt = f"Sen bir e-ticaret sitesi destek asistanısın. Asla Chat GPT olduğunu söyleme. İsmin Arge-Destek. Aşağıdaki bilgiler doğrultusunda soruyu cevapla:\n\nBilgi:\n{chr(10).join(context)}\n\nSoru: {last_message.content}"
-    response = client.chat.completions.create(
+    return {"reply": reply_text}
+
+def prep_query(messages):
+
+    query_prep = client.chat.completions.create(
         model="gpt-4.1-mini",
-        messages=[{"role": "user", "content": prompt}],
+        messages=[
+            {"role": "system", "content": 
+                '''
+                Kullanıcının şu anda ne sorduğunu belirle ve bunu 1 cümlelik bir arama sorgusu olarak döndür.
+                ÖNEMLİ KURAL:
+                Eğer son mesaj, müşteri hizmetleri, kargo, iade, ödeme, iletişim, adres, üyelik, hesap, çağrı merkezi veya genel destek konularıyla ilgiliyse, bu durumda önceki ürünlerle bağ kurma. Bu sorular ÜRÜNDEN BAĞIMSIZDIR. Bu durumda sadece son mesajı esas alarak bir arama sorgusu üret.
+                Sadece arama sorgusu döndür. Açıklama yazma.
+                '''
+            },
+            *[{"role": m.role, "content": m.content} for m in messages]
+        ],
         temperature=0
     )
 
-    return {"reply": response.choices[0].message.content}
+    search_query = query_prep.choices[0].message.content.strip()
 
-
+    return search_query
 
 def get_embedding(text):
     response = client.embeddings.create(
@@ -81,6 +207,4 @@ def retrieve(query, top_k=1):
     top_indices = np.argsort(similarities)[-top_k:][::-1]
     results = [vector_db[i]["text"] for i in top_indices]
     return results
-
-
 
