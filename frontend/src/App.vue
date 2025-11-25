@@ -32,10 +32,6 @@ onMounted(() => {
 
 marked.setOptions({ gfm: false })
 
-const generateUserKey = () => {
-	return crypto.randomUUID();
-}
-
 const sendMessage = async () => {
 	if (!userInput.value.trim()) return;
 
