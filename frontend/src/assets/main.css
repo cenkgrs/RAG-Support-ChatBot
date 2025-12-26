@@ -295,6 +295,16 @@ p {
 
 .message a {
 	color: black;
-	font-weight: 500;
+	font-weight: bold;
 	text-decoration: none;
+}
+
+ol {
+	margin: 0;
+	padding: 0;
+}
+
+.message img {
+	width: 6rem;
+	height: auto;
 }

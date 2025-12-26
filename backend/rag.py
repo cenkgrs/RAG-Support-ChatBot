@@ -83,7 +83,7 @@ def process_documents(folder_path):
                 })
 
     # Kaydetmek için
-    with open("vector_db.pkl", "wb") as f:
+    with open("evia_vector_db.pkl", "wb") as f:
         pickle.dump(vector_db, f)
     print(f"{len(vector_db)} belge parçası işlendi ve embedding kaydedildi.")
     return vector_db

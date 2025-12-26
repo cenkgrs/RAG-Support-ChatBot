@@ -11,7 +11,10 @@ import numpy as np
 import json
 from utils.refundRequest import *
 from utils.addToCartRequest import *
-
+import requests
+import time
+import base64
+import uuid
 
 # ENV yükle
 load_dotenv()
@@ -20,6 +23,9 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_KEY"))
 
 app = FastAPI()
+
+UPLOAD_FOLDER = "uploads"  # Resimlerin kaydedileceği klasör
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 session_store = {}
 
@@ -62,6 +68,7 @@ async def chat_endpoint(req: ChatRequest):
         "Cevaplarını HTML yerine Markdown formatında ver. "
         "Asla <span>, <div>, <p> gibi HTML etiketleri üretme. "
         "Liste, başlık, kalın yazı, satır başı gibi tüm biçimlendirmeleri Markdown ile yap. "
+        "Ürün bilgisi verirken ürün resmini de göster. "
     )
 
     # Context Prompt
@@ -118,6 +125,7 @@ async def chat_endpoint(req: ChatRequest):
                 }
             }
         ]
+            
     )
 
     msg = response.choices[0].message
@@ -162,6 +170,34 @@ async def chat_endpoint(req: ChatRequest):
 
                 reply_text = "Ürün sepete eklendi !"
 
+            elif tool_name == "create_image":
+
+                user_image = tool_args.get("user_image")
+
+                print(user_image)
+
+                # Kullanıcı fotoğraf seçmemişse → GPT MESAJI İLE INPUT GÖNDER
+                if user_image is None or user_image == "" or user_image == "None":
+                    reply_text = (
+                        "Lütfen kullanmak istediğiniz fotoğrafı yükleyin:<br>"
+                        '<input type="file" id="chatUpload" accept="image/*">'
+                    )
+                else :
+                    DEFAULT_PRODUCT_IMAGE = 'https://ikikiz.com/cdn/shop/files/3368-1_8ee7e859-195d-4ee0-b272-5e027578e05d_1000x.jpg?v=1713181770'
+
+                    user_image_url = tool_args.get("user_image")
+                    product_id = tool_args.get("product_id")
+
+                    # şimdilik default resim
+                    outfit_image_url = DEFAULT_PRODUCT_IMAGE
+
+                    result = createImage({
+                        "user_image_url": user_image_url,
+                        "outfit_image_url": outfit_image_url
+                    })
+
+                    reply_text = result
+
     else:
         reply_text = msg.content
 
@@ -169,6 +205,7 @@ async def chat_endpoint(req: ChatRequest):
 
 
     return {"reply": reply_text}
+
 
 def prep_query(messages):
 
@@ -200,7 +237,7 @@ def get_embedding(text):
     return np.array(response.data[0].embedding)
 
 def retrieve(query, top_k=1):
-    with open("vector_db.pkl", "rb") as f:
+    with open("evia_vector_db.pkl", "rb") as f:
         vector_db = pickle.load(f)
     query_emb = get_embedding(query)
     similarities = [cosine_similarity([query_emb], [item["embedding"]])[0][0] for item in vector_db]
@@ -208,3 +245,145 @@ def retrieve(query, top_k=1):
     results = [vector_db[i]["text"] for i in top_indices]
     return results
 
+@app.post("/upload-image")
+def upload_image(data: dict):
+    base64_image = data.get("image")
+    userKey = data.get("userKey")  # İstersen kullanabilirsin
+
+    if not base64_image:
+        return {"error": "No image provided"}
+
+    # Lokal olarak kaydet
+    image_path = save_base64_image_locally(base64_image)
+
+    return {"url": image_path}
+
+def save_base64_image_locally(base64_image: str) -> str:
+    """Base64 formatındaki resmi uploads klasörüne kaydeder ve path döndürür."""
+    # Base64 verisinde varsa başlığı ayır
+    if "," in base64_image:
+        _, encoded = base64_image.split(",", 1)
+    else:
+        encoded = base64_image
+
+    # Binary veriye çevir
+    image_data = base64.b64decode(encoded)
+
+    # Benzersiz dosya adı
+    filename = f"{uuid.uuid4().hex}.png"
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+
+    # Dosyayı kaydet
+    with open(filepath, "wb") as f:
+        f.write(image_data)
+
+    # Lokal path olarak döndür
+    return f"/{UPLOAD_FOLDER}/{filename}"
+
+def createImage(data):
+
+    print("resim oluştururcak")
+
+    print(data)
+
+    url = 'https://api.lightxeditor.com/external/api/v2/aivirtualtryon'
+
+    headers = {
+        'Content-Type': 'application/json',
+        'x-api-key': '8d4a9b5ddca2481d9c68d81f677e7d9c_75c2e202ef424a63b183c029451111ec_andoraitools'  # Replace with your actual API key
+    }
+
+    data = {
+        "imageUrl": data['user_image_url'],
+        "outfitImageUrl": data['outfit_image_url'],
+        "segmentationType": 0
+    }
+
+    response = requests.post(url, headers=headers, json=data)
+
+    # Check if the request was successful
+    if response.status_code == 200:
+        print("Request was successful!")
+        print(response.json())
+    else:
+        print(f"Request failed with status code: {response.status_code}")
+        print(response.text)
+
+    result = response.json()
+
+    orderId = result["body"]["orderId"]
+
+   # 2) SONUCU BEKLE
+    status_url = "https://api.lightxeditor.com/external/api/v2/order-status"
+
+    print("Waiting for image to be generated...")
+
+    while True:
+        time.sleep(3)  # LightX önerisi: 2–4 saniye bekle → tekrar sorgula
+
+        resp = requests.post(status_url, headers=headers, json={"orderId": orderId})
+        data = resp.json()
+
+        status = data["body"].get("status")
+        print("Current status:", status)
+
+        # hâlâ işleniyor
+        if status in ["init", "processing"]:
+            continue
+
+        # hata durumu
+        if status == "failed":
+            print("Image generation failed:", data)
+            return None
+
+        # tamamlandı → sonuç hazır
+        if status == "active":
+            output_data = data["body"].get("outputData")
+
+            if output_data and "outputImageUrl" in output_data:
+                image_url = output_data["outputImageUrl"]
+                print("FINAL IMAGE:", image_url)
+                return image_url
+            
+            if output_data and "output" in output_data:
+                image_url = output_data["output"]
+                print("FINAL IMAGE:", image_url)
+                return image_url
+            
+            
+            
+            print("Completed but no output image found:", data)
+            return None
+
+
+'''
+    {
+        "name": "create_image",
+        "description": "
+            Kullanıcı resim istediğinde bu api call ı çağır. Kullanın resmini talep et, Link verebilir veya upload etmek isteyebilir
+                Upload form u aşağıdaki gibi ilet
+                "Lütfen ürünün resmini yükler misiniz? Aşağıdaki yükleme alanını kullanabilirsiniz."
+                <input type="file" id="chatUpload" accept="image/*">
+
+                Kullanıcı resim yükledikten sonra create_image fonksiyonunu çağır.
+            ",
+        "type": "function",
+        "function": {
+            "name": "create_image",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "user_image": {
+                            "type": "string",
+                            "description": "Kullanıcının yüklediği fotoğraf"
+                        },
+                        "product_id": {
+                            "type": "string",
+                            "description": "Kullanıcının seçtiği ürün ID’si"
+                        }
+                    },
+                    "required": ["user_image_url", "product_id"]
+                }
+        }
+    }
+'''
